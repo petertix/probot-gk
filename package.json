@@ -10,6 +10,7 @@
     "test": "jest && standard"
   },
   "dependencies": {
+    "p-wait-for": "^1.0.0",
     "pkg99": "^1.0.0",
     "probot": "^3.0.0"
   },
