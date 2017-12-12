@@ -1,0 +1,387 @@
+
+const fetch = require('node-fetch');
+//import fetch from 'node-fetch';
+const pWaitFor = require('p-wait-for');
+
+module.exports = robot => {
+  
+  let description = "";
+  let passCount = 0;
+  let inProgressCount = 0;
+
+  console.log("The probot App was loaded!");
+  
+  robot.on('issue_comment.created', handleCommentCreated);
+  robot.on('issue_comment.edited', handleComment);
+  robot.on('pull_request.labeled', handleLabeled);
+  robot.on('pull_request.opened', handlePrOpened);
+
+  async function handleLabeled (context) {
+    const { payload } = context;
+
+    console.log("Pull Request was: Labeled");
+    console.log(payload);
+    
+    return;
+  }
+
+  // Main function to Handle the event if a Pull Request was Opened
+  async function handlePrOpened (context) {
+
+    const { payload } = context;
+    const {issue, comment} = context.payload;
+    const {pull_request, state} = issue;
+    const {user} = comment;
+
+    const {github} = context;
+
+    console.log("Peter, Comment PR Opened");
+    console.log("payload.number: " + payload.number);
+    console.log("payload.pull_request.state: " + payload.pull_request.state);
+    console.log("payload.pull_request.title: " + payload.pull_request.title);
+    console.log("payload.pull_request.user.login: " + payload.pull_request.user.login);
+    console.log("payload.pull_request.user.type: " + payload.pull_request.user.type);
+    // console.log("payload.pull_request.body: " + payload.pull_request.body);
+    console.log("payload.pull_request.statuses_url: " + payload.pull_request.statuses_url);
+    console.log("payload.pull_request.head.ref: " + payload.pull_request.head.ref);
+    console.log("payload.pull_request.head.sha: " + payload.pull_request.head.sha);
+    console.log("payload.pull_request.merged: " + payload.pull_request.merged);
+    console.log("payload.sender.login: " + payload.sender.login);
+    console.log("payload.sender.type: " + payload.sender.type);
+
+    console.log("owner:" + payload.sender.login);
+    console.log("repo: " + payload.repository.name);
+    console.log("ref: " + payload.pull_request.head.ref);
+
+    // If an Open Pull Request had a comment created by the greenkeeper[bot]
+    if (!pull_request || state !== 'open' || payload.sender.login !== 'greenkeeper[bot]') {
+      console.log('PR opened but the owner was not greenkeer[bot]');
+      return;
+     }
+
+    // Fetch the user's permissions
+    const permissions = await github.repos.reviewUserPermissionLevel(
+      context.repo({
+        username: payload.sender.login,
+      }),
+    );
+    
+    // If the User's permissions can not perform the merge, then return
+    const level = permissions.data.permission;
+    console.log("permissions.data.permission: " + level);
+
+    // if (level !== 'admin' && level !== 'write') {
+    //   return;
+    // }
+    
+    // Fuction to check the current state of the pull request.
+    // The state can be in one of the following states:
+    // pending, failure or success
+    const theStatus = await github.repos.getCombinedStatusForRef(
+      context.repo({
+        repo: payload.repository.name,
+        ref: payload.pull_request.head.sha,
+      }),
+    );
+        
+    console.log(theStatus);
+    console.log("state: " + theStatus.data.state);
+
+    // console.log("sha: " + theStatus.data.sha);
+    // console.log("description: " + theStatus.data.repository.description);
+    
+    console.log(theStatus.data.statuses);
+
+ 
+ 
+    try {
+      async function fetchPrState (repoName, refSha) {
+        let status = false;
+
+        const prStatus = await github.repos.getCombinedStatusForRef(
+          context.repo({
+            repo: repoName,
+            ref: refSha,
+          }),
+        );
+
+        console.log(prStatus.data.state);
+
+        // if (prStatus.data.state === 'success') {
+        if (prStatus.data.state !== 'pending') {
+          console.log("The PR State is: " +  prStatus.data.state)
+          status = true;
+        }
+        
+        return status;
+      }
+      
+      let repoName = payload.repository.name;
+      let refSha = payload.pull_request.head.sha;
+
+      // Wait for the combined Pull Request state to be either 
+      // failure or success 
+      pWaitFor(() => fetchPrState(repoName,refSha),1000).then(() => {
+        console.log('Yay! The status is no longer pending!');
+      })
+
+      return;
+    }
+  } catch (err) {
+      console.log(err.code);
+      
+      if (err.code === 500) {
+        const message = JSON.parse(err.message).message;
+        github.issues.createComment(
+          context.issue({
+            body: `Connection Timed out: ${message}`,
+          }),
+        );
+      }
+  }
+
+
+
+  async function handleCommentCreated (context) {
+    const { payload } = context;
+
+    console.log("Peter, Comment Created");
+    console.log(payload);
+    
+    return;
+  }
+  
+  // If an Open Pull Request had a comment created by the bot: GreenKeeper
+  async function handleComment(context) {
+    const { payload } = context;
+    const {issue, comment} = context.payload;
+    const {pull_request, state} = issue;
+    const {user} = comment;
+    
+    // console.log(issue);
+    // console.log(user);
+    // console.log(user.login);
+    // console.log(user.type);
+    // console.log(user.site_admin);
+
+    // console.log(pull_request);
+    // console.log(state);
+    // console.log(user.type);
+
+    //console.log(payload.state);
+
+    //console.log(payload);
+    
+    // If the comment is in:
+    // an Open Pull Request by a Valid user, then continue
+    // Otherwise return
+    // Change this to continue if the greenkeeper bot created the issue.
+    // if (!pull_request || state !== 'open' || user.type !== 'User') {
+     if (!pull_request || state !== 'open') {
+       return;
+     }
+
+    console.log('Made it 10');
+    console.log("issue.number: " + issue.number);
+    console.log("issue.title: " + issue.title);
+    console.log("issue.user.login: " + issue.user.login);
+    console.log("issue.state: " + issue.state);
+    console.log("payload.comment.body: " + payload.comment.body);
+    console.log("payload.sender.login: " + payload.sender.login);
+
+    //console.log(context);
+
+    // Fetch the user's permissions
+    const {github} = context;
+    const permissions = await github.repos.reviewUserPermissionLevel(
+      context.repo({
+        username: user.login,
+      }),
+    );
+
+    //console.log(permissions);
+    //console.log('Made it 14');
+    //console.log(permissions.data);
+    
+    // If the User's permissions can not perform the merge, then return
+    const level = permissions.data.permission;
+    console.log("permissions.data.permission: " + permissions.data.permission);
+
+    // if (level !== 'admin' && level !== 'write') {
+    //   return;
+    // }
+    
+
+    // console.log(permissions);
+
+    console.log('Made it 20');
+    
+    // console.log(comment.body);
+
+
+    // Use the pull_requests method, getAll
+    const pull_requests = await github.pullRequests.getAll(
+      context.repo({
+        username: user.login,
+      }),
+    );
+
+    // console.log(pull_requests);
+
+    const url =  pull_requests.data[0].statuses_url;
+
+    console.log("pull_requests.data[0].number: " + pull_requests.data[0].number);
+    console.log("pull_requests.data[0].title: " + pull_requests.data[0].title);
+    console.log("pull_requests.data[0].state: " + pull_requests.data[0].state);
+    console.log("pull_requests.data[0].statuses_url: " + url);
+    console.log("pull_requests.data[0].merged_at: " + pull_requests.data[0].merged_at);
+
+
+    // The statuses_url points to a json array of data.
+    fetch(url)
+    .then(
+       function(response) {
+        if (response.status !== 200) {
+          console.log('Looks like there was a problem. Status Code: ' +
+            response.status);
+          return;
+        }
+  
+        // Examine the text in the response
+        response.json().then(function(data) {
+
+          passCount = 0;
+          // Loop through the json array
+          for (let i=0; i<data.length; i++){
+            description  = data[i].description;
+            if (description === "The Travis CI build passed") {
+              passCount++
+            }
+            else if (description === "The Travis CI build is in progress") {
+              inProgressCount++
+            }
+            console.log(description);
+          }
+
+          console.log("passCount = " + passCount);
+          console.log("inProgressCount = " + inProgressCount);
+        });
+
+      
+
+      }
+    )
+    .catch(function(err) {
+      console.log('Fetch Error :-S', err);
+    });
+  
+    console.log(description);
+
+    // fetch(url)
+    // .then((resp) => resp.json())
+    // .then(function(data) {
+    //   let state = data[0].state
+    // })
+    // .catch(function(error) {
+    //   console.log(error);
+    // });  
+
+   // console.log(data);
+
+    console.log('Made it 26');
+
+    // console.log(context);
+
+    // const status = await github.repos.getCombinedStatusForRef(
+
+    // )
+    
+    
+
+    // const status = await github.repos.getStatuses(
+    //   context.repo({
+    //     ref:f976a7385f088ca10832766fe991e870aca4940d,
+    //   }),
+    // );
+    // console.log(status);
+
+    // PETER
+
+    console.log('Made it 30');
+    
+    console.log("issue.number: " + issue.number);
+    console.log("issue.title: " + issue.title);
+    console.log("issue.html_url: " +issue.html_url);
+
+    console.log('Made it 34');
+
+  //  return;
+
+    // //const { payload } = context;
+    // context.github.pullRequests
+    // .getComments({
+    //   owner: payload.repository.owner.login,
+    //   repo: payload.repository.name,
+    //   number: issue.number
+    // })
+    // .then(console.log);
+
+    // **** Do not merge - still testing ****
+
+    console.log("passCount: " + passCount)
+
+    if (passCount == 2) {
+      console.log("Merge would have happened")
+    }
+    else {
+      console.log("Merge would NOT have happened")
+    }
+  return;
+
+    const {merge_method} = {
+      merge_method: 'merge',
+    };
+
+    console.log(merge_method);
+
+    // Try to perform the merge with the issue Number, title, commit message and the merge method.
+    try {
+      await github.pullRequests.merge(
+        context.repo({
+          number: issue.number,
+          commit_title: issue.title,
+          commit_message: issue.html_url,
+          merge_method,
+        }),
+      );
+
+      console.log('Made it 40!');
+
+    } catch (err) {
+      console.log(err.code);
+      
+      if (err.code === 405) {
+        const message = JSON.parse(err.message).message;
+        github.issues.createComment(
+          context.issue({
+            body: `Failed to merge PR: ${message}`,
+          }),
+        );
+      }
+
+      // A 403 suggests that the github App's permissions and webhooks need addressing
+      else if (err.code === 403) {
+        const message = JSON.parse(err.message).message;
+        console.log(message);
+
+      //  github.issues.createComment(
+      //    context.issue({
+      //      body: `Failed to merge PR: ${message}`,
+      //    }),
+      //  );
+      }
+
+      console.log('Made it 50');
+    }
+  }
+};
