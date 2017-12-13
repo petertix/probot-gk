@@ -3,18 +3,31 @@ const pWaitFor = require('p-wait-for');
 module.exports = robot => {
   console.log('The probot App was loaded!');
 
+  // robot.on('pull_request.opened', async c =>
+  //   handlePrOpened(c).catch(e => {
+  //     if (e.code === 405) {
+  //       const message = JSON.parse(e.message).message;
+  //       c.issues.createComment(
+  //         context.issue({
+  //           body: `Failed to merge PR: ${message}`
+  //         })
+  //       );
+  //     }
+  //   })
+  // );
+
   robot.on('pull_request.opened', handlePrOpened);
   robot.on('pull_request.labeled', handleLabeled);
 
   async function handleLabeled(context) {
-    const { payload } = context;
+    //    const { payload } = context;
 
     // If the sender of the PR is not greenkeeper, then return
     if (payload.pull_request.user.login !== 'greenkeeper[bot]') {
       return;
     }
 
-    console.log('The greenkeeper issue was Labeled');
+    console.log('The issue was Labeled');
 
     return;
   }
@@ -81,29 +94,19 @@ module.exports = robot => {
       })
     );
 
-    // Uncomment the next line while Testing to prevent the merge
+    // Uncomment the next line while Testing
     //    return;
 
     // Create a Review. This may be necessary to pass the error:
     //  Error: 405 'At least one approved review is required'
-    try {
-      await github.pullRequests.submitReview(
-        context.repo({
-          number: payload.pull_request.number,
-          commit_title: payload.pull_request.title,
-          commit_message: payload.pull_request.html_url
-        })
-      );
-      console.log('Creating a Review...');
-    } catch (err) {
-      console.log('Error during submitReview. Error Code: ' + err.code);
-      const message = JSON.parse(err.message).message;
-      console.log(message);
-      console.log(github.pullRequests);
-    }
-
-    // For testing
-    return;
+    // await github.pullRequests.createReview(
+    //   context.repo({
+    //     number: payload.pull_request.number,
+    //     commit_title: payload.pull_request.title,
+    //     commit_message: payload.pull_request.html_url,
+    //     merge_method
+    //   })
+    // );
 
     const { merge_method } = {
       merge_method: 'merge'
@@ -153,8 +156,6 @@ module.exports = robot => {
       );
 
       console.log('State: ' + prStatus.data.state);
-
-      // If the state is 'failure' time out?
 
       return prStatus.data.state === 'success';
     }
