@@ -1,6 +1,8 @@
-sudo: false
 language: node_js
 node_js:
-  - 6
-notifications:
-  disabled: true
+- 8
+deploy:
+  provider: npm
+  on:
+    tags: true
+    repo: petertix/probot-gk

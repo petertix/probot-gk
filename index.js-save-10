@@ -1,0 +1,141 @@
+const pWaitFor = require('p-wait-for');
+
+module.exports = robot => {
+  robot.on('pull_request.opened', async c =>
+    handlePrOpened(c).catch(e => console.error(e))
+  );
+
+  async function handlePrOpened(context) {
+    const { payload, github } = context;
+
+    // If the state of the PR is not open, then return
+    if (payload.pull_request.state !== 'open') return;
+
+    // If the sender of the PR is not greenkeeper, then return
+    if (payload.pull_request.user.login !== 'greenkeeper[bot]') return;
+
+    // ++ This is the Main Polling loop ++
+    // Wait for the state of the PR to change from pending to
+    // success or failure. Poll every 5000ms (5 sec).
+
+    const repoName = payload.repository.name;
+    const refSha = payload.pull_request.head.sha;
+
+    await pWaitFor(() => fetchPrState(repoName, refSha), 5000);
+
+    // console.log(context);
+
+    const permissions = await github.repos.reviewUserPermissionLevel(
+      context.repo({
+        username: payload.pull_request.user.login,
+      }),
+    );
+
+    console.log(permissions);
+
+    console.log('Now, the merge...');
+    console.log('number: ' + payload.pull_request.number);
+    console.log('commit_title: ' + payload.pull_request.title);
+
+    github.repos.removeProtectedBranchPullRequestReviewEnforcement(
+      context.repo({
+        branch: 'master'
+      }),
+    )
+
+
+
+    // Create a Review. This may be necessary to pass the error:
+    //  Error: 405 'At least one approved review is required'
+
+
+  //   console.log(context.issue({
+  //     // event: 'APPROVE',
+  //     commit_id: refSha,
+  //     body: 'Auto generated.'
+  //   }));
+
+  //   const reviews = await github.pullRequests.getReviews(
+  //     context.issue({
+  //     })
+  //   );
+
+  
+  // console.log(reviews);
+
+  // if (reviews.data.length) {
+  //   console.log('made it 10');
+  //   const review = reviews.data[0];
+  //   console.log(review);
+  //   if (review.state == 'PENDING')
+  //       await github.pullRequests.submitReview(
+  //         context.issue({
+  //           event: 'APPROVE',
+  //           id: review.id
+  //         })
+  //       );
+  // } else {
+  //   console.log('made it 20');
+  //   await github.pullRequests.createReview(
+  //       context.issue({
+  //         event: 'APPROVE',
+  //         commit_id: refSha,
+  //       })
+  //     );
+  // }
+
+    // For testing
+  //  return;
+
+    // Attempt to merge the Pull Request
+    // Try to perform the merge with the issue Number, title,
+    // commit message and the merge method.
+    try {
+      await github.pullRequests.merge(
+        context.repo({
+          number: payload.pull_request.number,
+          commit_title: payload.pull_request.title,
+          commit_message: payload.pull_request.html_url,
+          merge_method: 'merge'
+        })
+      );
+    } catch (err) {
+      console.log('Error during Merging. Error Code: ' + err.code);
+
+      if (err.code === 405) {
+        const message = JSON.parse(err.message).message;
+        console.log(message);
+        github.issues.createComment(
+          context.issue({
+            body: `Failed to merge PR: ${message}`
+          })
+        );
+      }
+    }
+    github.repos.updateProtectedBranchPullRequestReviewEnforcement(
+      context.repo({
+        branch: 'master',
+        dismiss_stale_reviews: true
+      }),
+    )
+
+    // The fetchPrState function is polled repeatedly until the
+    // PR state changes to a non-pending state.
+    // If the state is: success, then attempt to merge the PR.
+    // If the state is: failure or non-pending, then return.
+    //
+    async function fetchPrState(repo, ref) {
+      // Fetch the combined status of the PR from all CI test results.
+      const prStatus = await github.repos.getCombinedStatusForRef(
+        context.repo({
+          repo,
+          ref
+        })
+      );
+
+      console.log('State: ' + prStatus.data.state);
+
+      return prStatus.data.state === 'success';
+    }
+  }
+};
